@@ -6,7 +6,16 @@ export ANDROID_MAJOR_VERSION=q
 export CONFIG_SECTION_MISMATCH_WARN_ONLY=y
 
 make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 m10ltesea_00_defconfig
-make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 -j30
+make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 -j60
 
+# copy Image to work
 cp arch/arm64/boot/Image AK/
-zip PKernel.zip AK/*
+
+# go to AnyKernel3 path
+cd AK
+
+# zip the kernel
+zip PKernel.zip *
+
+# mv the kernel to work
+mv PKernel ..
