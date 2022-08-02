@@ -15,7 +15,7 @@ cp arch/arm64/boot/Image AK/
 cd AK
 
 # zip the kernel
-zip PKernel.zip *
+zip -r -0 PKernel.zip *
 
 # mv the kernel to work
 mv PKernel.zip ..
