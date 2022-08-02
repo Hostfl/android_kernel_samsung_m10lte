@@ -10,4 +10,4 @@ make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 -j16
 
 mv arch/arm64/boot/Image $(pwd)/AnyKernel3
 
-zip PKernel.zip $(pwd)/AnyKernel
+zip PKernel.zip $(pwd)/AK
