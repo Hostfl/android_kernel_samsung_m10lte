@@ -18,4 +18,4 @@ cd AK
 zip PKernel.zip *
 
 # mv the kernel to work
-mv PKernel ..
+mv PKernel.zip ..
