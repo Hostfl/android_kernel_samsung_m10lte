@@ -7,7 +7,7 @@ export CONFIG_SECTION_MISMATCH_WARN_ONLY=y
 export AK=$(pwd)
 
 make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 m10ltesea_00_defconfig
-make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 -j300
+make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 -j30
 
 mv "arch/arm64/boot/Image" "$AK/AK"
 
