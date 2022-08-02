@@ -90,74 +90,6 @@ int gpu_pmqos_dvfs_min_lock(int level)
 	return 0;
 }
 
-static ssize_t show_volt_table(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
-	ssize_t count = 0, pr_len;
-	int i, max, min;
-
-	if (!platform)
-		return -ENODEV;
-
-	max = gpu_dvfs_get_stock_level(platform->gpu_max_clock_limit);
-	min = gpu_dvfs_get_stock_level(platform->gpu_min_clock_limit);
-	pr_len = (size_t)((PAGE_SIZE - 2) / (min-max));
-
-	for (i = max; i <= min; i++) {
-		count += snprintf(&buf[count], pr_len, "%d %d\n",
-				platform->table[i].clock,
-				platform->table[i].voltage);
-	}
-
-	return count;
-}
-
-static ssize_t set_volt_table(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
-	int max = gpu_dvfs_get_stock_level(platform->gpu_max_clock_limit);
-	int min = gpu_dvfs_get_stock_level(platform->gpu_min_clock_limit);
-	int i, tokens, rest, target;
-	int t[min - max];
-	unsigned long flags;
-
-	if ((tokens = read_into((int*)&t, min-max, buf, count)) < 0)
-		return -EINVAL;
-
-	target = -1;
-	if (tokens == 2) {
-		for (i = max; i <= min; i++) {
-			if (t[0] == platform->table[i].clock) {
-				target = i;
-				break;
-			}
-		}
-	}
-
-	spin_lock_irqsave(&platform->gpu_dvfs_spinlock, flags);
-
-	if (tokens == 2 && target > -1) {
-		if ((rest = t[1] % GPU_VOLT_STEP) != 0)
-			t[1] += GPU_VOLT_STEP - rest;
-
-		sanitize_min_max(t[1], GPU_MIN_VOLT, GPU_MAX_VOLT);
-		platform->table[target].voltage = t[1];
-	} else {
-		for (i = 0; i < tokens; i++) {
-			if ((rest = t[i] % GPU_VOLT_STEP) != 0)
-				t[i] += GPU_VOLT_STEP - rest;
-
-			sanitize_min_max(t[i], GPU_MIN_VOLT, GPU_MAX_VOLT);
-			platform->table[i + max].voltage = t[i];
-		}
-	}
-
-	//ipa_update();
-	spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
-
-	return count;
-}
-
 static ssize_t show_clock(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -338,6 +270,74 @@ static ssize_t show_asv_table(struct device *dev, struct device_attribute *attr,
 	return ret;
 }
 
+static ssize_t show_volt_table(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+	ssize_t count = 0, pr_len;
+	int i, max, min;
+
+	if (!platform)
+		return -ENODEV;
+
+	max = gpu_dvfs_get_stock_level(platform->gpu_max_clock_limit);
+	min = gpu_dvfs_get_stock_level(platform->gpu_min_clock_limit);
+	pr_len = (size_t)((PAGE_SIZE - 2) / (min-max));
+
+	for (i = max; i <= min; i++) {
+		count += snprintf(&buf[count], pr_len, "%d %d\n",
+				platform->table[i].clock,
+				platform->table[i].voltage);
+	}
+
+	return count;
+}
+
+static ssize_t set_volt_table(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+	int max = gpu_dvfs_get_stock_level(platform->gpu_max_clock_limit);
+	int min = gpu_dvfs_get_stock_level(platform->gpu_min_clock_limit);
+	int i, tokens, rest, target;
+	int t[min - max];
+	unsigned long flags;
+
+	if ((tokens = read_into((int*)&t, min-max, buf, count)) < 0)
+		return -EINVAL;
+
+	target = -1;
+	if (tokens == 2) {
+		for (i = max; i <= min; i++) {
+			if (t[0] == platform->table[i].clock) {
+				target = i;
+				break;
+			}
+		}
+	}
+
+	spin_lock_irqsave(&platform->gpu_dvfs_spinlock, flags);
+
+	if (tokens == 2 && target > -1) {
+		if ((rest = t[1] % GPU_VOLT_STEP) != 0)
+			t[1] += GPU_VOLT_STEP - rest;
+
+		sanitize_min_max(t[1], GPU_MIN_VOLT, GPU_MAX_VOLT);
+		platform->table[target].voltage = t[1];
+	} else {
+		for (i = 0; i < tokens; i++) {
+			if ((rest = t[i] % GPU_VOLT_STEP) != 0)
+				t[i] += GPU_VOLT_STEP - rest;
+
+			sanitize_min_max(t[i], GPU_MIN_VOLT, GPU_MAX_VOLT);
+			platform->table[i + max].voltage = t[i];
+		}
+	}
+
+	//ipa_update();
+	spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
+
+	return count;
+}
+
 static int gpu_get_dvfs_table(struct exynos_context *platform, char *buf, size_t buf_size)
 {
 	int i, cnt = 0;
@@ -354,6 +354,189 @@ static int gpu_get_dvfs_table(struct exynos_context *platform, char *buf, size_t
 	cnt += snprintf(buf+cnt, buf_size-cnt, "\n");
 
 	return cnt;
+}
+
+static ssize_t show_dvfs_table(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += gpu_get_dvfs_table(platform, buf+ret, (size_t)PAGE_SIZE-ret);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	int i;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	gpu_dvfs_update_time_in_state(gpu_control_is_power_on(pkbdev) * platform->cur_clock);
+
+	for (i = gpu_dvfs_get_level(platform->gpu_min_clock); i >= gpu_dvfs_get_level(platform->gpu_max_clock); i--) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d %llu\n",
+				platform->table[i].clock,
+				platform->table[i].time);
+	}
+
+	if (ret >= PAGE_SIZE - 1) {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_time_in_state(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	gpu_dvfs_init_time_in_state();
+
+	return count;
+}
+
+static ssize_t show_utilization(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", gpu_control_is_power_on(pkbdev) * platform->env_data.utilization);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t show_perf(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", gpu_control_is_power_on(pkbdev) * platform->env_data.perf);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+#ifdef CONFIG_MALI_DVFS
+static ssize_t show_dvfs(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->dvfs_status);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_dvfs(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	if (sysfs_streq("0", buf))
+		gpu_dvfs_on_off(false);
+	else if (sysfs_streq("1", buf))
+		gpu_dvfs_on_off(true);
+
+	return count;
+}
+
+static ssize_t show_governor(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	ssize_t ret = 0;
+	gpu_dvfs_governor_info *governor_info;
+	int i;
+	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	governor_info = (gpu_dvfs_governor_info *)gpu_dvfs_get_governor_info();
+
+	for (i = 0; i < G3D_MAX_GOVERNOR_NUM; i++)
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%s\n", governor_info[i].name);
+
+	ret += snprintf(buf+ret, PAGE_SIZE-ret, "[Current Governor] %s", governor_info[platform->governor_type].name);
+
+	if (ret < PAGE_SIZE - 1) {
+		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
+	} else {
+		buf[PAGE_SIZE-2] = '\n';
+		buf[PAGE_SIZE-1] = '\0';
+		ret = PAGE_SIZE-1;
+	}
+
+	return ret;
+}
+
+static ssize_t set_governor(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	int next_governor_type;
+	struct exynos_context *platform  = (struct exynos_context *)pkbdev->platform_context;
+
+	if (!platform)
+		return -ENODEV;
+
+	ret = kstrtoint(buf, 0, &next_governor_type);
+
+	if ((next_governor_type < 0) || (next_governor_type >= G3D_MAX_GOVERNOR_NUM)) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
+		return -ENOENT;
+	}
+
+	ret = gpu_dvfs_governor_change(next_governor_type);
+
+	if (ret < 0) {
+		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u,
+				"%s: fail to set the new governor (%d)\n", __func__, next_governor_type);
+		return -ENOENT;
+	}
+
+	return count;
 }
 
 static ssize_t show_gpu_custom_max_clock(struct device *dev, struct device_attribute *attr, char *buf)
@@ -681,189 +864,6 @@ static ssize_t set_gpu_tripping(struct device *dev, struct device_attribute *att
 	return count;
 }
 
-static ssize_t show_dvfs_table(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	ssize_t ret = 0;
-	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
-
-	if (!platform)
-		return -ENODEV;
-
-	ret += gpu_get_dvfs_table(platform, buf+ret, (size_t)PAGE_SIZE-ret);
-
-	if (ret < PAGE_SIZE - 1) {
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	} else {
-		buf[PAGE_SIZE-2] = '\n';
-		buf[PAGE_SIZE-1] = '\0';
-		ret = PAGE_SIZE-1;
-	}
-
-	return ret;
-}
-
-static ssize_t show_time_in_state(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	ssize_t ret = 0;
-	int i;
-	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
-
-	if (!platform)
-		return -ENODEV;
-
-	gpu_dvfs_update_time_in_state(gpu_control_is_power_on(pkbdev) * platform->cur_clock);
-
-	for (i = gpu_dvfs_get_level(platform->gpu_min_clock); i >= gpu_dvfs_get_level(platform->gpu_max_clock); i--) {
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d %llu\n",
-				platform->table[i].clock,
-				platform->table[i].time);
-	}
-
-	if (ret >= PAGE_SIZE - 1) {
-		buf[PAGE_SIZE-2] = '\n';
-		buf[PAGE_SIZE-1] = '\0';
-		ret = PAGE_SIZE-1;
-	}
-
-	return ret;
-}
-
-static ssize_t set_time_in_state(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	gpu_dvfs_init_time_in_state();
-
-	return count;
-}
-
-static ssize_t show_utilization(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	ssize_t ret = 0;
-	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
-
-	if (!platform)
-		return -ENODEV;
-
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", gpu_control_is_power_on(pkbdev) * platform->env_data.utilization);
-
-	if (ret < PAGE_SIZE - 1) {
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	} else {
-		buf[PAGE_SIZE-2] = '\n';
-		buf[PAGE_SIZE-1] = '\0';
-		ret = PAGE_SIZE-1;
-	}
-
-	return ret;
-}
-
-static ssize_t show_perf(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	ssize_t ret = 0;
-	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
-
-	if (!platform)
-		return -ENODEV;
-
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", gpu_control_is_power_on(pkbdev) * platform->env_data.perf);
-
-	if (ret < PAGE_SIZE - 1) {
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	} else {
-		buf[PAGE_SIZE-2] = '\n';
-		buf[PAGE_SIZE-1] = '\0';
-		ret = PAGE_SIZE-1;
-	}
-
-	return ret;
-}
-
-#ifdef CONFIG_MALI_DVFS
-static ssize_t show_dvfs(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	ssize_t ret = 0;
-	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
-
-	if (!platform)
-		return -ENODEV;
-
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "%d", platform->dvfs_status);
-
-	if (ret < PAGE_SIZE - 1) {
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	} else {
-		buf[PAGE_SIZE-2] = '\n';
-		buf[PAGE_SIZE-1] = '\0';
-		ret = PAGE_SIZE-1;
-	}
-
-	return ret;
-}
-
-static ssize_t set_dvfs(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	if (sysfs_streq("0", buf))
-		gpu_dvfs_on_off(false);
-	else if (sysfs_streq("1", buf))
-		gpu_dvfs_on_off(true);
-
-	return count;
-}
-
-static ssize_t show_governor(struct device *dev, struct device_attribute *attr, char *buf)
-{
-	ssize_t ret = 0;
-	gpu_dvfs_governor_info *governor_info;
-	int i;
-	struct exynos_context *platform = (struct exynos_context *)pkbdev->platform_context;
-
-	if (!platform)
-		return -ENODEV;
-
-	governor_info = (gpu_dvfs_governor_info *)gpu_dvfs_get_governor_info();
-
-	for (i = 0; i < G3D_MAX_GOVERNOR_NUM; i++)
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "%s\n", governor_info[i].name);
-
-	ret += snprintf(buf+ret, PAGE_SIZE-ret, "[Current Governor] %s", governor_info[platform->governor_type].name);
-
-	if (ret < PAGE_SIZE - 1) {
-		ret += snprintf(buf+ret, PAGE_SIZE-ret, "\n");
-	} else {
-		buf[PAGE_SIZE-2] = '\n';
-		buf[PAGE_SIZE-1] = '\0';
-		ret = PAGE_SIZE-1;
-	}
-
-	return ret;
-}
-
-static ssize_t set_governor(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
-{
-	int ret;
-	int next_governor_type;
-	struct exynos_context *platform  = (struct exynos_context *)pkbdev->platform_context;
-
-	if (!platform)
-		return -ENODEV;
-
-	ret = kstrtoint(buf, 0, &next_governor_type);
-
-	if ((next_governor_type < 0) || (next_governor_type >= G3D_MAX_GOVERNOR_NUM)) {
-		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u, "%s: invalid value\n", __func__);
-		return -ENOENT;
-	}
-
-	ret = gpu_dvfs_governor_change(next_governor_type);
-
-	if (ret < 0) {
-		GPU_LOG(DVFS_WARNING, DUMMY, 0u, 0u,
-				"%s: fail to set the new governor (%d)\n", __func__, next_governor_type);
-		return -ENOENT;
-	}
-
-	return count;
-}
-
 static ssize_t show_max_lock_status(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	ssize_t ret = 0;
@@ -974,7 +974,7 @@ static ssize_t set_max_lock_dvfs(struct device *dev, struct device_attribute *at
 			return -ENOENT;
 		}
 
-                clock = platform->gpu_max_clock;
+		clock = platform->gpu_max_clock;
 
 		platform->user_max_lock_input = clock;
 
@@ -2447,11 +2447,6 @@ int gpu_create_sysfs_file(struct device *dev)
 	int retval = 0;
 #endif
 
-        if (device_create_file(dev, &dev_attr_volt_table)) {
-		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [volt_table]\n");
-		goto out;
-	}
-
 	if (device_create_file(dev, &dev_attr_clock)) {
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [clock]\n");
 		goto out;
@@ -2469,6 +2464,11 @@ int gpu_create_sysfs_file(struct device *dev)
 
 	if (device_create_file(dev, &dev_attr_asv_table)) {
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [asv_table]\n");
+		goto out;
+	}
+
+	if (device_create_file(dev, &dev_attr_volt_table)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [volt_table]\n");
 		goto out;
 	}
 
@@ -2552,7 +2552,7 @@ int gpu_create_sysfs_file(struct device *dev)
 		goto out;
 	}
 
-        if (device_create_file(dev, &dev_attr_max_clock)) {
+	if (device_create_file(dev, &dev_attr_max_clock)) {
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "couldn't create sysfs file [max_clock]\n");
 		goto out;
 	}
@@ -2684,7 +2684,7 @@ void gpu_remove_sysfs_file(struct device *dev)
 	device_remove_file(dev, &dev_attr_power_state);
 	device_remove_file(dev, &dev_attr_asv_table);
 	device_remove_file(dev, &dev_attr_volt_table);
-        device_remove_file(dev, &dev_attr_dvfs_table);
+	device_remove_file(dev, &dev_attr_dvfs_table);
 	device_remove_file(dev, &dev_attr_time_in_state);
 	device_remove_file(dev, &dev_attr_utilization);
 	device_remove_file(dev, &dev_attr_perf);
@@ -2701,7 +2701,7 @@ void gpu_remove_sysfs_file(struct device *dev)
 	device_remove_file(dev, &dev_attr_highspeed_delay);
 	device_remove_file(dev, &dev_attr_wakeup_lock);
 	device_remove_file(dev, &dev_attr_polling_speed);
-        device_remove_file(dev, &dev_attr_max_clock);
+	device_remove_file(dev, &dev_attr_max_clock);
 	device_remove_file(dev, &dev_attr_min_clock);
 	device_remove_file(dev, &dev_attr_throttling1);
 	device_remove_file(dev, &dev_attr_throttling2);
