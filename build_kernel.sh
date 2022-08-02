@@ -9,6 +9,6 @@ export AK=$(pwd)
 make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 m10ltesea_00_defconfig
 make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 -j300
 
-mv arch/arm64/boot/Image $AK/AK
+mv "arch/arm64/boot/Image" "$AK/AK"
 
 zip "PKernel.zip" "$AK/AK"
