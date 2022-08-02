@@ -11,11 +11,8 @@ make CONFIG_SECTION_MISMATCH_WARN_ONLY=y ARCH=arm64 -j60
 # copy Image to work
 cp arch/arm64/boot/Image AK/
 
-# go to AnyKernel3 path
-cd AK
-
 # zip the kernel
-zip -r -0 PKernel.zip *
+7z a PKernel.zip ./AK/*
 
 # mv the kernel to work
 mv PKernel.zip ..
