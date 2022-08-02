@@ -20,7 +20,7 @@ supported.patchlevels=
 '; } # end properties
 
 # shell variables
-block=/dev/block/platform/13540000.dwmmc0/by-name/boot;
+block=/dev/block/platform/13540000.dwmmc0/by-name/BOOT;
 is_slot_device=0;
 ramdisk_compression=auto;
 patch_vbmeta_flag=auto;
